@@ -62,7 +62,12 @@ void spawn_n_nested_procs(int master_pid, int n, int** shared_array_nested) {
 		if(n == -1){
 		printf("nested\n");
 		}
-		if(n == num_procs) {return;}
+		if(n == num_procs-1) {
+			int sum_result = sum(n);
+			printf(" Hello from process: %d;sum: %d; mean: %.2f\n",getpid(), sum_result, mean(sum_result, divisions[n]));
+			*shared_array_nested[n] = sum_result;
+			return;
+		}
 		int pid;
 		switch (pid = fork()){
 			case -1:
@@ -84,7 +89,7 @@ void spawn_n_nested_procs(int master_pid, int n, int** shared_array_nested) {
 						for(int i =0; i< num_procs; ++i){
 							sum += *shared_array_nested[i];
 						}
-						printf("sum of everyhting nested %d\n",sum);
+						printf("sum of everything nested %d\n",sum);
 						printf("mean of everything nested %.2f\n",mean(sum, num_numbers));
 				}
 		}
@@ -117,18 +122,19 @@ int main(int argc, char **argv)
 	fseek(file, 0L, SEEK_END);
 	int size = ftell(file);
 	fseek(file, 0L, SEEK_SET);
-	content = malloc(size);	
+	content = malloc(size+1);	
 	fread(content, size, 1, file);
+	content[size] = '\0';
 	printf("Read bytes: %d", size);
 	fclose(file);
-	printf("Read contents: %s", content);
+	printf("Read contents: %s\n", content);
 
 	num_numbers = 0;
 	for(int i=0; i<size; ++i) {
 		if(*(content+i) == ',') ++num_numbers;
 	}
 	if(num_procs>num_numbers){
-		printf("can't have more processes than numbers");
+		printf("can't have more processes than numbers in file");
 		return 0;
 	}
 	num_vec = (int*)malloc(num_numbers * sizeof(int));
@@ -163,7 +169,6 @@ int main(int argc, char **argv)
 	for(int i=0; i<num_procs;i++){
 		shared_array[i] = mmap(NULL,sizeof(int),PROT_READ | PROT_WRITE,MAP_SHARED | MAP_ANONYMOUS,-1,0);
 	}
-	printf("\n");
 	spawn_n_procs(pid, shared_array);
 	int* shared_array_nested[num_procs]; 
 	for(int i=0; i<num_procs;i++){
@@ -176,5 +181,8 @@ int main(int argc, char **argv)
 	for (int i = 0; i < num_procs; i++) {
         munmap(shared_array_nested[i], sizeof(int));
     }
+	free(num_vec);
+	free(divisions);
+	free(content);
 	return 0;
 }
