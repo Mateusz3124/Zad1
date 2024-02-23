@@ -4,6 +4,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <string.h>
+#include <sys/mman.h>
 
 char *content;
 int *num_vec;
@@ -26,7 +27,7 @@ float mean(int sum, int num) {
 	return (float)sum/num;
 }
 
-void spawn_n_procs(int master_pid) {
+void spawn_n_procs(int master_pid, int** shared_array) {
 	pid_t pid;
 	printf("not nested\n");
 	for(int i=0; i<num_procs; ++i) {
@@ -38,6 +39,7 @@ void spawn_n_procs(int master_pid) {
 				printf(" ");
 				int sum_result = sum(i);
 				printf("Hello from process: %d;sum: %d; mean: %.2f\n",getpid(), sum_result, mean(sum_result, divisions[i]));
+				*shared_array[i] = sum_result;
 				return;
 			default:
 				break;
@@ -47,12 +49,18 @@ void spawn_n_procs(int master_pid) {
 		if(wait(0) == -1)
 			printf("Error in wait\n");
 	}
+	int sum = 0;
+	for(int i =0;i<num_procs;++i){
+		sum += *shared_array[i];
+	}
+	printf("sum of everything: %d\n",sum);
+	printf("mean of everything: %.2f\n", mean(sum, num_numbers));
 	return;
 }
 
-void spawn_n_nested_procs(int master_pid, int n) {
+void spawn_n_nested_procs(int master_pid, int n, int** shared_array_nested) {
 	if(master_pid == getpid()) {
-		if(n == 0){
+		if(n == -1){
 		printf("nested\n");
 		}
 		if(n == num_procs) {return;}
@@ -62,25 +70,35 @@ void spawn_n_nested_procs(int master_pid, int n) {
 				printf("Error in fork\n");
 				return;
 			case 0:
-				spawn_n_nested_procs(getpid(), n+1);
+				spawn_n_nested_procs(getpid(), n+1, shared_array_nested);
 				return;
 			default:
-				printf("Hello from process %d\n", master_pid);
-				int sum_result = sum(n);
-				printf("sum: %d\n", sum_result);
-				printf("mean: %.2f\n", mean(sum_result, divisions[n]));
+				if(n != -1){					
+					int sum_result = sum(n);
+					printf(" Hello from process: %d;sum: %d; mean: %.2f\n",getpid(), sum_result, mean(sum_result, divisions[n]));
+					*shared_array_nested[n] = sum_result;
+				}
 				if(wait(0) == -1)
 					printf("Error with wait nested\n");
+				if(n == -1){
+						int sum = 0;
+						for(int i =0; i< num_procs; ++i){
+							sum += *shared_array_nested[i];
+						}
+						printf("sum of everyhting nested %d\n",sum);
+						printf("mean of everything nested %.2f\n",mean(sum, num_numbers));
+				}
 		}
 		return;
 	} else {
 		return;
 	}
 }
+
 int main(int argc, char **argv)
 {
-	if(argc != 2) { 
-		printf("Correct usage: ./program <num_procs>");
+	if(argc != 3) { 
+		printf("Correct usage: ./program <num_procs> <name_file>");
 		return 0;
 	}
 
@@ -89,10 +107,10 @@ int main(int argc, char **argv)
 		printf("num_procs must be positive number");
 		return 0;
 	}
-
+	char *file_name = argv[2];
 	pid_t pid;
 	pid = getpid();
-	FILE *file = fopen("vector", "rb");
+	FILE *file = fopen(file_name, "rb");
 	if(file == NULL) {
 		printf("Could not read the file");
 		return 0;
@@ -142,9 +160,22 @@ int main(int argc, char **argv)
 			counter = 0;
 		}
 	}
+	int* shared_array[num_procs]; 
+	for(int i=0; i<num_procs;i++){
+		shared_array[i] = mmap(NULL,sizeof(int),PROT_READ | PROT_WRITE,MAP_SHARED | MAP_ANONYMOUS,-1,0);
+	}
 	printf("\n");
-	spawn_n_procs(pid);
-	spawn_n_nested_procs(pid, 0);
-
+	spawn_n_procs(pid, shared_array);
+	int* shared_array_nested[num_procs]; 
+	for(int i=0; i<num_procs;i++){
+		shared_array_nested[i] = mmap(NULL,sizeof(int),PROT_READ | PROT_WRITE,MAP_SHARED | MAP_ANONYMOUS,-1,0);
+	}
+	spawn_n_nested_procs(pid, -1, shared_array_nested);
+	for (int i = 0; i < num_procs; i++) {
+        munmap(shared_array[i], sizeof(int));
+    }
+	for (int i = 0; i < num_procs; i++) {
+        munmap(shared_array_nested[i], sizeof(int));
+    }
 	return 0;
 }
