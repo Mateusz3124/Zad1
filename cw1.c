@@ -35,10 +35,9 @@ void spawn_n_procs(int master_pid, int** shared_array) {
 			case -1:
 				printf("Error in fork\n");
 				return;
-			case 0:
-				printf(" ");
+			case 0:	
 				int sum_result = sum(i);
-				printf("Hello from process: %d;sum: %d; mean: %.2f\n",getpid(), sum_result, mean(sum_result, divisions[i]));
+				printf(" Hello from process: %d;sum: %d; mean: %.2f\n",getpid(), sum_result, mean(sum_result, divisions[i]));
 				*shared_array[i] = sum_result;
 				return;
 			default:
